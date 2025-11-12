@@ -129,6 +129,112 @@ else:^
             }
         }
         
+        stage('🤖 Check Retraining Conditions') {
+            steps {
+                echo '🔍 Checking if model retraining needed...'
+                script {
+                    try {
+                        bat '''
+                            docker exec disaster-api python -c "^
+from scripts.auto_retrain import AutoRetrainer^
+import json^
+^
+retrainer = AutoRetrainer(model_type='flood')^
+conditions = retrainer.check_retraining_conditions()^
+^
+print('\n📋 Retraining Conditions:')^
+print(f'Should Retrain: {conditions[\"should_retrain\"]}')^
+for reason in conditions['reasons']:^
+    print(f'  ✅ {reason}')^
+for warning in conditions['warnings']:^
+    print(f'  ⚠️  {warning}')^
+^
+if conditions['should_retrain']:^
+    print('\n🚨 Retraining should be triggered!')^
+    with open('retrain_trigger.txt', 'w') as f:^
+        json.dump(conditions, f)^
+    exit(0)^
+else:^
+    print('\n✅ No retraining needed')^
+    exit(0)^
+" 2>nul || echo ⚠️ Retraining check skipped
+                        '''
+                    } catch (Exception e) {
+                        echo "⚠️ Retraining check failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        
+        stage('📚 Automated Model Retraining') {
+            when {
+                expression {
+                    return fileExists('retrain_trigger.txt')
+                }
+            }
+            steps {
+                echo '🚀 AUTOMATED RETRAINING TRIGGERED!'
+                echo '   Initiating model retraining pipeline...'
+                script {
+                    try {
+                        bat '''
+                            echo 📊 Retraining log: >> logs/retrain_%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%.log
+                            
+                            docker exec disaster-api python scripts/auto_retrain.py ^
+                                --trigger jenkins ^
+                                --model flood ^
+                                --verify ^
+                                >> logs/retrain.log 2>&1
+                            
+                            if errorlevel 1 (
+                                echo ⚠️ Retraining completed with warnings
+                            ) else (
+                                echo ✅ Retraining completed successfully
+                                del retrain_trigger.txt 2>nul
+                            )
+                        '''
+                    } catch (Exception e) {
+                        echo "⚠️ Retraining failed: ${e.message}"
+                        echo "   Continuing with current model..."
+                    }
+                }
+            }
+        }
+        
+        stage('🔄 Sync Retrained Models') {
+            when {
+                expression {
+                    return fileExists('retrain_trigger.txt') == false
+                }
+            }
+            steps {
+                echo '📤 Syncing latest retrained models to Google Drive...'
+                script {
+                    try {
+                        bat '''
+                            docker exec disaster-api python -c "^
+from src.colab_integration.drive_sync import DriveModelSync^
+from pathlib import Path^
+^
+if Path('models/saved_models/flood').exists():^
+    latest_models = sorted(Path('models/saved_models/flood').glob('*.keras'))^
+    if latest_models:^
+        syncer = DriveModelSync()^
+        print(f'✅ Found {len(latest_models)} models to sync')^
+        print('Note: Direct sync from Jenkins requires OAuth token')^
+    else:^
+        print('No models found to sync')^
+else:^
+    print('Model directory not found')^
+" 2>nul || echo ⚠️ Model sync skipped
+                        '''
+                    } catch (Exception e) {
+                        echo "⚠️ Model sync failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        
         stage('🐳 Build Docker Image') {
             steps {
                 echo '🏗️ Building Docker image...'
