@@ -26,7 +26,7 @@ pipeline {
         stage('🧪 Environment Setup') {
             steps {
                 echo '🐍 Setting up Python environment...'
-                sh '''
+                bat '''
                     python --version
                     pip install -r requirements.txt
                 '''
@@ -38,12 +38,12 @@ pipeline {
                 echo '☁️ Syncing latest models from Google Drive...'
                 script {
                     try {
-                        sh '''
-                            python -c "
-from src.colab_integration.drive_sync import DriveModelSync
-syncer = DriveModelSync()
-syncer.sync_models(['flood', 'fire'])
-print('✅ Model sync complete')
+                        bat '''
+                            python -c "^
+from src.colab_integration.drive_sync import DriveModelSync^
+syncer = DriveModelSync()^
+syncer.sync_models(['flood', 'fire'])^
+print('✅ Model sync complete')^
 "
                         '''
                     } catch (Exception e) {
@@ -57,13 +57,12 @@ print('✅ Model sync complete')
         stage('🔬 Run Tests') {
             steps {
                 echo '🧪 Running unit tests...'
-                sh '''
-                    # Run tests if they exist
-                    if [ -d "tests" ]; then
-                        pytest tests/ -v --junitxml=test-results.xml || true
-                    else
-                        echo "No tests found, skipping..."
-                    fi
+                bat '''
+                    if exist tests (
+                        pytest tests/ -v --junitxml=test-results.xml || exit /b 0
+                    ) else (
+                        echo No tests found, skipping...
+                    )
                 '''
             }
         }
@@ -73,32 +72,30 @@ print('✅ Model sync complete')
                 echo '📈 Validating model performance...'
                 script {
                     try {
-                        sh '''
-                            python -c "
-import json
-import os
-
-# Check if metadata exists
-metadata_path = 'models/saved_models/flood/model_metadata_20251112_074534.json'
-if os.path.exists(metadata_path):
-    with open(metadata_path, 'r') as f:
-        metadata = json.load(f)
-    
-    accuracy = metadata.get('final_val_acc', 0)
-    iou = metadata.get('iou', 0)
-    
-    print(f'Model Accuracy: {accuracy:.4f}')
-    print(f'Model IoU: {iou:.4f}')
-    
-    # Validation thresholds
-    if accuracy < 0.85:
-        print('⚠️ Warning: Model accuracy below threshold!')
-    if iou < 0.35:
-        print('⚠️ Warning: Model IoU below threshold!')
-    
-    print('✅ Model validation complete')
-else:
-    print('⚠️ No metadata found, skipping validation')
+                        bat '''
+                            python -c "^
+import json^
+import os^
+^
+metadata_path = 'models/saved_models/flood/model_metadata_20251112_074534.json'^
+if os.path.exists(metadata_path):^
+    with open(metadata_path, 'r') as f:^
+        metadata = json.load(f)^
+    ^
+    accuracy = metadata.get('final_val_acc', 0)^
+    iou = metadata.get('iou', 0)^
+    ^
+    print(f'Model Accuracy: {accuracy:.4f}')^
+    print(f'Model IoU: {iou:.4f}')^
+    ^
+    if accuracy ^< 0.85:^
+        print('⚠️ Warning: Model accuracy below threshold!')^
+    if iou ^< 0.35:^
+        print('⚠️ Warning: Model IoU below threshold!')^
+    ^
+    print('✅ Model validation complete')^
+else:^
+    print('⚠️ No metadata found, skipping validation')^
 "
                         '''
                     } catch (Exception e) {
@@ -113,17 +110,16 @@ else:
                 echo '📊 Checking for data drift...'
                 script {
                     try {
-                        sh '''
-                            python -c "
-from src.drift_detection.drift_monitor import DriftDetector
-import os
-
-if os.path.exists('data/baseline'):
-    detector = DriftDetector(baseline_dir='data/baseline')
-    # Check drift (simplified for CI)
-    print('✅ Drift detection check complete')
-else:
-    print('⚠️ No baseline data found, skipping drift detection')
+                        bat '''
+                            python -c "^
+from src.drift_detection.drift_monitor import DriftDetector^
+import os^
+^
+if os.path.exists('data/baseline'):^
+    detector = DriftDetector(baseline_dir='data/baseline')^
+    print('✅ Drift detection check complete')^
+else:^
+    print('⚠️ No baseline data found, skipping drift detection')^
 "
                         '''
                     } catch (Exception e) {
@@ -136,9 +132,9 @@ else:
         stage('🐳 Build Docker Image') {
             steps {
                 echo '🏗️ Building Docker image...'
-                sh '''
-                    docker build -f docker/Dockerfile.api -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                bat '''
+                    docker build -f docker/Dockerfile.api -t %DOCKER_IMAGE%:%DOCKER_TAG% .
+                    docker tag %DOCKER_IMAGE%:%DOCKER_TAG% %DOCKER_IMAGE%:latest
                 '''
             }
         }
@@ -146,22 +142,21 @@ else:
         stage('🚀 Deploy') {
             steps {
                 echo '🚢 Deploying application...'
-                sh '''
-                    # Stop existing container
-                    docker stop disaster-detection-api || true
-                    docker rm disaster-detection-api || true
+                bat '''
+                    docker stop disaster-detection-api 2>nul || exit /b 0
+                    docker rm disaster-detection-api 2>nul || exit /b 0
                     
-                    # Start new container
-                    docker run -d \
-                        --name disaster-detection-api \
-                        -p ${API_PORT}:8000 \
-                        -v $(pwd)/models:/app/models \
-                        -v $(pwd)/data:/app/data \
-                        -e MODEL_PATH=/app/models/saved_models/flood/vizag_flood_model_20251112_074534.keras \
-                        ${DOCKER_IMAGE}:latest
+                    for /f "tokens=*" %%i in ('cd') do set "PWD=%%i"
                     
-                    # Wait for container to be healthy
-                    sleep 10
+                    docker run -d ^
+                        --name disaster-detection-api ^
+                        -p %API_PORT%:8000 ^
+                        -v "%PWD%/models:/app/models" ^
+                        -v "%PWD%/data:/app/data" ^
+                        -e MODEL_PATH=/app/models/saved_models/flood/vizag_flood_model_20251112_074534.keras ^
+                        %DOCKER_IMAGE%:latest
+                    
+                    timeout /t 10 /nobreak
                 '''
             }
         }
@@ -176,7 +171,7 @@ else:
                     
                     while (retryCount < maxRetries && !healthy) {
                         try {
-                            sh "curl -f http://localhost:${API_PORT}/health"
+                            bat "curl -f http://localhost:%API_PORT%/health"
                             healthy = true
                             echo '✅ Health check passed!'
                         } catch (Exception e) {
@@ -196,14 +191,10 @@ else:
         stage('📊 Post-Deployment Tests') {
             steps {
                 echo '🧪 Running post-deployment tests...'
-                sh '''
-                    # Test model info endpoint
-                    curl -s http://localhost:${API_PORT}/models/info || true
-                    
-                    # Test root endpoint
-                    curl -s http://localhost:${API_PORT}/ || true
-                    
-                    echo "✅ Post-deployment tests complete"
+                bat '''
+                    curl -s http://localhost:%API_PORT%/models/info || exit /b 0
+                    curl -s http://localhost:%API_PORT%/ || exit /b 0
+                    echo ✅ Post-deployment tests complete
                 '''
             }
         }
@@ -218,7 +209,7 @@ else:
         
         failure {
             echo '❌ Pipeline failed!'
-            sh 'docker logs disaster-detection-api || true'
+            bat 'docker logs disaster-detection-api 2>nul || exit /b 0'
         }
         
         always {
@@ -227,7 +218,7 @@ else:
             junit testResults: 'test-results.xml', allowEmptyResults: true
             
             // Clean old Docker images
-            sh 'docker image prune -f --filter "until=24h" || true'
+            bat 'docker image prune -f --filter "until=24h" 2>nul || exit /b 0'
         }
     }
 }
