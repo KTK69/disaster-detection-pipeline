@@ -1,0 +1,52 @@
+# ========================================
+# Drift Monitor - Dockerfile
+# Monitors data drift and triggers retraining
+# ========================================
+FROM python:3.9-slim
+
+LABEL maintainer="Disaster Detection System"
+LABEL description="Data drift monitoring service"
+
+# ========================================
+# Install system dependencies
+# ========================================
+RUN apt-get update && apt-get install -y \
+    cron \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# Set working directory
+# ========================================
+WORKDIR /app
+
+# ========================================
+# Copy and install Python dependencies
+# ========================================
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ========================================
+# Copy application code
+# ========================================
+COPY src/ ./src/
+COPY data/ ./data/
+COPY scripts/drift_monitor_cron.sh /app/
+
+# Make script executable
+RUN chmod +x /app/drift_monitor_cron.sh
+
+# ========================================
+# Setup cron job (runs every 6 hours)
+# ========================================
+RUN echo "0 */6 * * * cd /app && /app/drift_monitor_cron.sh >> /var/log/drift_monitor.log 2>&1" > /etc/cron.d/drift-monitor && \
+    chmod 0644 /etc/cron.d/drift-monitor && \
+    crontab /etc/cron.d/drift-monitor && \
+    touch /var/log/drift_monitor.log
+
+# ========================================
+# Run cron in foreground
+# ========================================
+CMD ["sh", "-c", "cron && tail -f /var/log/drift_monitor.log"]

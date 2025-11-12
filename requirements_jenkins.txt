@@ -1,0 +1,6 @@
+# Jenkins Pipeline Requirements
+# Minimal dependencies for CI/CD orchestration only
+# (Heavy ML dependencies run in API containers, not in Jenkins)
+
+python-dotenv>=1.0.0
+requests>=2.32.0

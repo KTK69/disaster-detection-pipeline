@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # Disaster Detection API (CPU-based)
+  # ========================================
+  detection-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: disaster-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./models/saved_models:/app/models/saved_models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./token.pickle:/app/token.pickle:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - API_HOST=${API_HOST:-0.0.0.0}
+      - API_PORT=8000
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - disaster-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================
+  # Drift Monitoring Service
+  # ========================================
+  drift-monitor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.drift
+    container_name: drift-monitor
+    volumes:
+      - ./data:/app/data
+      - ./models/saved_models:/app/models/saved_models:ro
+      - ./logs:/app/logs
+      - ./token.pickle:/app/token.pickle:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - DRIFT_THRESHOLD=${DRIFT_THRESHOLD:-0.5}
+      - JENKINS_URL=${JENKINS_URL:-http://jenkins:8080}
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      detection-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - disaster-network
+
+  # ========================================
+  # Jenkins CI/CD Server
+  # ========================================
+  jenkins:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.jenkins
+    container_name: jenkins-mlops
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace
+      - ./token.pickle:/workspace/token.pickle:ro
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false -Dhudson.model.DirectoryBrowserSupport.CSP=
+      - JENKINS_OPTS=--httpPort=8080
+    restart: unless-stopped
+    networks:
+      - disaster-network
+    user: root
+
+# ========================================
+# Networks
+# ========================================
+networks:
+  disaster-network:
+    driver: bridge
+    name: disaster-network
+
+# ========================================
+# Volumes
+# ========================================
+volumes:
+  jenkins_home:
+    name: jenkins_home

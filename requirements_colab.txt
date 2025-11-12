@@ -1,0 +1,33 @@
+# ========================================
+# Google Colab Notebook Dependencies
+# Install in Colab with: !pip install -r requirements_colab.txt
+# ========================================
+
+# Machine Learning
+tensorflow==2.15.0
+# PyTorch alternative (comment out TF if using PyTorch)
+# torch==2.1.0
+# torchvision==0.16.0
+
+# Earth Engine & Geospatial
+earthengine-api==0.1.382
+geemap==0.29.5
+
+# Data Processing
+numpy==1.24.3
+pandas==2.1.3
+scikit-learn==1.3.2
+scikit-image==0.22.0
+rasterio==1.3.9
+
+# Visualization
+matplotlib==3.8.2
+seaborn==0.13.0
+plotly==5.18.0
+
+# Drift Detection
+evidently==0.4.11
+
+# Utilities
+tqdm==4.66.1
+pillow==10.1.0
