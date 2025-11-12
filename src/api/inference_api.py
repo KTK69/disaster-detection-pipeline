@@ -1,14 +1,16 @@
 """
-FastAPI Inference Server for Disaster Detection
+FastAPI Inference Server with Real-Time Flood Alert System
 CPU-based inference - no GPU required
+Includes: Flood detection, proximity analysis, and real-time alerts
 """
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import logging
 from datetime import datetime
 from typing import Optional
+import numpy as np
 
 # Setup logging
 logging.basicConfig(
